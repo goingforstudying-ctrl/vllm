@@ -229,7 +229,36 @@ In this example, we assume the block size is 4 (each block can cache 4 tokens), 
 
 **Time 5: Request 1 is finished and free.**
 
-![Example Time 5](../assets/design/prefix_caching/example-time-6.png)
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e1f5fe', 'primaryTextColor': '#01579b', 'primaryBorderColor': '#0288d1', 'lineColor': '#0288d1', 'secondaryColor': '#fff3e0', 'tertiaryColor': '#e8f5e9'}}}%%
+flowchart TB
+    subgraph CacheBlocks["Cache Blocks (hash → block_id)"]
+        direction TB
+        h1["A-D → 0"]
+        h2["A-H → 1"] 
+        h3["A-L → 2"]
+        h4["A-P → 3"]
+    end
+    
+    subgraph BlockPool["Block Pool"]
+        direction TB
+        b0["Block 0<br/>hash: A-D<br/>ref: 0"]
+        b1["Block 1<br/>hash: A-H<br/>ref: 0"]
+        b2["Block 2<br/>hash: A-L<br/>ref: 0"]
+        b3["Block 3<br/>hash: A-P<br/>ref: 0"]
+        b4["Block 4<br/>hash: A-J,kl<br/>ref: 0"]
+        b5["Block 5<br/>ref: 0"]
+        b6["Block 6<br/>ref: 0"]
+        b7["Block 7<br/>ref: 0"]
+        b8["Block 8<br/>ref: 0"]
+        b9["Block 9<br/>ref: 0"]
+    end
+    
+    subgraph FreeQueue["Free Block Queue (LRU)"]
+        direction LR
+        q0["0"] --> q1["1"] --> q2["2"] --> q3["3"] --> q4["4"] --> q5["5"] --> q6["6"] --> q7["7"] --> q8["8"] --> q9["9"]
+    end
+```
 
 **Time 6: Request 2 comes in with the 29 prompt tokens, where the first 12 tokens are the same as request 0\.** Note that even the block order in the free queue was `7 - 8 - 9 - 4 - 3 - 2 - 6 - 5 - 1 - 0`, the cache hit blocks (i.e., 0, 1, 2) are touched and removed from the queue before allocation, so the free queue becomes `7 - 8 - 9 - 4 - 3 - 6 - 5`. As a result, the allocated blocks are 0 (cached), 1 (cached), 2 (cached), 7, 8, 9, 4, 3 (evicted).
 
