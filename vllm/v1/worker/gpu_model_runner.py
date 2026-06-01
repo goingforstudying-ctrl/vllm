@@ -39,6 +39,7 @@ from vllm.distributed.kv_transfer import get_kv_transfer_group, has_kv_transfer_
 from vllm.distributed.kv_transfer.kv_connector.utils import copy_kv_blocks
 from vllm.distributed.parallel_state import (
     get_dcp_group,
+    get_dp_group,
     get_pp_group,
     get_tp_group,
     graph_capture,
@@ -3988,6 +3989,30 @@ class GPUModelRunner(
                 spec_decode_common_attn_metadata.max_seq_len + self.num_spec_tokens
                 <= self.effective_drafter_max_model_len
             )
+
+            # Synchronize input_fits_in_drafter across all DP ranks to prevent
+            # NCCL deadlock when the draft model is a MoE. If one DP group
+            # skips speculative decoding while another enters the MoE forward
+            # pass, the collective communication in the MoE layer will hang
+            # indefinitely waiting for the skipped ranks.
+            if (
+                self.parallel_config.data_parallel_size > 1
+                and spec_config.uses_draft_model()
+            ):
+                dp_group = get_dp_group()
+                # Convert bool to int tensor for collective communication.
+                fits_tensor = torch.tensor(
+                    int(input_fits_in_drafter),
+                    device=dp_group.device,
+                    dtype=torch.int32,
+                )
+                # All-reduce with MIN: if any rank cannot fit, all ranks must
+                # skip speculative decoding to keep the collective in sync.
+                torch.distributed.all_reduce(
+                    fits_tensor, group=dp_group.device_group, op=torch.distributed.ReduceOp.MIN
+                )
+                input_fits_in_drafter = bool(fits_tensor.item())
+
             use_gpu_toks = (
                 spec_config.use_eagle()
                 or spec_config.uses_draft_model()
