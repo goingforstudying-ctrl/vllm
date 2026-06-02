@@ -254,6 +254,16 @@ class SchedulerConfig:
                 self.long_prefill_token_threshold,
             )
 
+        # Validate max_num_scheduled_tokens if explicitly set.
+        # This must be validated regardless of speculative decoding settings,
+        # otherwise a negative value will cause an AssertionError in the scheduler.
+        if self.max_num_scheduled_tokens is not None:
+            if self.max_num_scheduled_tokens <= 0:
+                raise ValueError(
+                    f"max_num_scheduled_tokens must be positive, got "
+                    f"{self.max_num_scheduled_tokens}."
+                )
+
         self.verify_max_model_len(max_model_len)
 
     def verify_max_model_len(self, max_model_len: int) -> Self:
